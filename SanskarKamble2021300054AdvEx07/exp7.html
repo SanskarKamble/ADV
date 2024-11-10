@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>D3.js Visualizations</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        .chart-container {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+        }
+        .tooltip {
+            position: absolute;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="bar-chart" class="chart-container"></div>
+    <div id="pie-chart" class="chart-container"></div>
+    <div id="histogram" class="chart-container"></div>
+    <div id="timeline" class="chart-container"></div>
+    <div id="scatter-plot" class="chart-container"></div>
+    <div id="bubble-plot" class="chart-container"></div>
+    <div id="box-plot" class="chart-container"></div>
+    <div id="violin-plot" class="chart-container"></div>
+    <div id="regression-plot" class="chart-container"></div>
+
+<script>
+// Load data from CSV file
+d3.csv("./financial_data.csv").then(rawData => {
+        // Clean and parse the data
+        const data = rawData.map(d => ({
+        Segment: d.Segment,
+        Country: d.Country,
+        Product: d.Product,
+        'Discount Band': d['Discount Band'],
+        'Units Sold': d['Units Sold'] ? parseFloat(d['Units Sold'].replace('$', '').replace(',', '')) : 0,
+        'Manufacturing Price': d['Manufacturing Price'] ? parseFloat(d['Manufacturing Price'].replace('$', '')) : 0,
+        'Sale Price': d['Sale Price'] ? parseFloat(d['Sale Price'].replace('$', '')) : 0,
+        'Gross Sales': d['Gross Sales'] ? parseFloat(d['Gross Sales'].replace('$', '').replace(',', '')) : 0,
+        Sales: d.Sales ? parseFloat(d.Sales.replace('$', '').replace(',', '')) : 0,
+        COGS: d.COGS ? parseFloat(d.COGS.replace('$', '').replace(',', '')) : 0,
+        Profit: d.Profit ? parseFloat(d.Profit.replace('$', '').replace(',', '')) : 0,
+        Date: d.Date ? new Date(d.Date) : null,
+        Month: d['Month Name'],
+        Year: parseInt(d.Year) || 0
+    }));
+        // Call the visualization functions with the data
+        createBarChart(data);
+        createPieChart(data);
+        createHistogram(data);
+        createTimelineChart(data);
+        createScatterPlot(data);
+        createBubblePlot(data);
+        createBoxPlot(data);
+    }).catch(error => console.error(error));
+
+// Visualization functions
+function createBarChart(data) {
+    const width = 600;
+    const height = 400;
+    const margin = {top: 20, right: 20, bottom: 60, left: 60};
+
+    const svg = d3.select("#bar-chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const segmentData = d3.rollup(
+        data,
+        v => d3.sum(v, d => d.Sales),
+        d => d.Segment
+    );
+
+    const x = d3.scaleBand()
+        .range([margin.left, width - margin.right])
+        .padding(0.1)
+        .domain(Array.from(segmentData.keys()));
+
+    const y = d3.scaleLinear()
+        .range([height - margin.bottom, margin.top])
+        .domain([0, d3.max(segmentData.values())]);
+
+    svg.selectAll("rect")
+        .data(segmentData)
+        .enter()
+        .append("rect")
+        .attr("x", d => x(d[0]))
+        .attr("y", d => y(d[1]))
+        .attr("width", x.bandwidth())
+        .attr("height", d => height - margin.bottom - y(d[1]))
+        .attr("fill", "steelblue");
+
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x))
+        .selectAll("text")
+        .attr("transform", "rotate(-45)")
+        .style("text-anchor", "end");
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y)
+            .tickFormat(d => d3.format("$,")(d)));
+
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", margin.top)
+        .attr("text-anchor", "middle")
+        .text("Sales by Segment");
+}
+
+// 2. Pie Chart
+function createPieChart(data) {
+    const width = 400;
+    const height = 400;
+    const radius = Math.min(width, height) / 2;
+
+    const svg = d3.select("#pie-chart")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .append("g")
+        .attr("transform", `translate(${width/2},${height/2})`);
+
+    // Group data by product
+    const productData = d3.rollup(
+        data,
+        v => d3.sum(v, d => d.Sales),
+        d => d.Product
+    );
+
+    const color = d3.scaleOrdinal()
+        .domain(productData.keys())
+        .range(d3.schemeCategory10);
+
+    const pie = d3.pie()
+        .value(d => d[1]);
+
+    const arc = d3.arc()
+        .innerRadius(0)
+        .outerRadius(radius);
+
+    // Add slices
+    const slices = svg.selectAll("path")
+        .data(pie(Array.from(productData)))
+        .enter()
+        .append("path")
+        .attr("d", arc)
+        .attr("fill", d => color(d.data[0]))
+        .attr("stroke", "white")
+        .style("stroke-width", "2px");
+
+    // Add labels
+    const arcLabel = d3.arc()
+        .innerRadius(radius * 0.6)
+        .outerRadius(radius * 0.6);
+
+    svg.selectAll("text")
+        .data(pie(Array.from(productData)))
+        .enter()
+        .append("text")
+        .attr("transform", d => `translate(${arcLabel.centroid(d)})`)
+        .attr("text-anchor", "middle")
+        .text(d => d.data[0]);
+}
+
+function createHistogram(data) {
+    const width = 600;
+    const height = 400;
+    const margin = {top: 20, right: 20, bottom: 60, left: 60};
+
+    const svg = d3.select("#histogram")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const bins = d3.bin()
+        .value(d => d['Units Sold'])
+        .domain(d3.extent(data, d => d['Units Sold']))
+        .thresholds(20)(data);
+
+    const x = d3.scaleLinear()
+        .domain([bins[0].x0, bins[bins.length - 1].x1])
+        .range([margin.left, width - margin.right]);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(bins, d => d.length)])
+        .range([height - margin.bottom, margin.top]);
+
+    svg.selectAll("rect")
+        .data(bins)
+        .enter()
+        .append("rect")
+        .attr("x", d => x(d.x0) + 1)
+        .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+        .attr("y", d => y(d.length))
+        .attr("height", d => y(0) - y(d.length))
+        .attr("fill", "steelblue");
+
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y));
+
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", margin.top)
+        .attr("text-anchor", "middle")
+        .text("Distribution of Units Sold");
+}
+
+function createTimelineChart(data) {
+    const width = 800;
+    const height = 400;
+    const margin = {top: 20, right: 20, bottom: 60, left: 60};
+
+    const svg = d3.select("#timeline")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const timelineData = d3.rollup(
+        data,
+        v => d3.sum(v, d => d.Sales),
+        d => d.Date
+    );
+
+    const sortedData = Array.from(timelineData)
+        .sort((a, b) => a[0] - b[0]);
+
+    const x = d3.scaleTime()
+        .domain(d3.extent(sortedData, d => d[0]))
+        .range([margin.left, width - margin.right]);
+
+    const y = d3.scaleLinear()
+        .domain([0, d3.max(sortedData, d => d[1])])
+        .range([height - margin.bottom, margin.top]);
+
+    const line = d3.line()
+        .x(d => x(d[0]))
+        .y(d => y(d[1]));
+
+    svg.append("path")
+        .datum(sortedData)
+        .attr("fill", "none")
+        .attr("stroke", "steelblue")
+        .attr("stroke-width", 2)
+        .attr("d", line);
+
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y)
+            .tickFormat(d => d3.format("$,")(d)));
+
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", margin.top)
+        .attr("text-anchor", "middle")
+        .text("Sales Over Time");
+}
+
+// 5. Scatter Plot
+function createScatterPlot(data) {
+    const width = 600;
+    const height = 400;
+    const margin = {top: 20, right: 20, bottom: 60, left: 60};
+
+    const svg = d3.select("#scatter-plot")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const x = d3.scaleLinear()
+        .domain(d3.extent(data, d => d['Manufacturing Price']))
+        .range([margin.left, width - margin.right]);
+
+    const y = d3.scaleLinear()
+        .domain(d3.extent(data, d => d['Sale Price']))
+        .range([height - margin.bottom, margin.top]);
+
+    // Add dots
+    svg.selectAll("circle")
+        .data(data)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d['Manufacturing Price']))
+        .attr("cy", d => y(d['Sale Price']))
+        .attr("r", 5)
+        .attr("fill", "steelblue")
+        .attr("opacity", 0.6);
+
+    // Add axes
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x))
+        .append("text")
+        .attr("x", width/2)
+        .attr("y", 40)
+        .attr("fill", "black")
+        .text("Manufacturing Price");
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y))
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", -40)
+        .attr("x", -height/2)
+        .attr("fill", "black")
+        .text("Sale Price");
+}
+
+// 6. Bubble Plot
+function createBubblePlot(data) {
+    const width = 600;
+    const height = 400;
+    const margin = {top: 20, right: 20, bottom: 60, left: 60};
+
+    const svg = d3.select("#bubble-plot")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    const x = d3.scaleLinear()
+        .domain(d3.extent(data, d => d['Manufacturing Price']))
+        .range([margin.left, width - margin.right]);
+
+    const y = d3.scaleLinear()
+        .domain(d3.extent(data, d => d['Sale Price']))
+        .range([height - margin.bottom, margin.top]);
+
+    const r = d3.scaleSqrt()
+        .domain(d3.extent(data, d => d.Profit))
+        .range([2, 20]);
+
+    const color = d3.scaleOrdinal()
+        .domain(data.map(d => d.Segment))
+        .range(d3.schemeCategory10);
+
+    // Add bubbles
+    svg.selectAll("circle")
+        .data(data)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d['Manufacturing Price']))
+        .attr("cy", d => y(d['Sale Price']))
+        .attr("r", d => r(d.Profit))
+        .attr("fill", d => color(d.Segment))
+        .attr("opacity", 0.6);
+
+    // Add axes
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y));
+
+    // Add title
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", margin.top)
+        .attr("text-anchor", "middle")
+        .text("Price Relationships with Profit (Bubble Size)");
+}
+
+// 7. Box Plot
+function createBoxPlot(data) {
+    const width = 600;
+    const height = 400;
+    const margin = {top: 20, right: 20, bottom: 60, left: 60};
+
+    const svg = d3.select("#box-plot")
+        .append("svg")
+        .attr("width", width)
+        .attr("height", height);
+
+    // Calculate statistics for each segment
+    const segments = Array.from(new Set(data.map(d => d.Segment)));
+    const boxData = segments.map(segment => {
+        const segmentData = data.filter(d => d.Segment === segment)
+            .map(d => d.Profit);
+        
+        const sorted = segmentData.sort(d3.ascending);
+        const q1 = d3.quantile(sorted, 0.25);
+        const median = d3.quantile(sorted, 0.5);
+        const q3 = d3.quantile(sorted, 0.75);
+        const iqr = q3 - q1;
+        const min = q1 - 1.5 * iqr;
+        const max = q3 + 1.5 * iqr;
+
+        return {
+            segment,
+            min: Math.max(min, d3.min(sorted)),
+            q1,
+            median,
+            q3,
+            max: Math.min(max, d3.max(sorted))
+        };
+    });
+
+    const x = d3.scaleBand()
+        .domain(segments)
+        .range([margin.left, width - margin.right])
+        .padding(0.1);
+
+    const y = d3.scaleLinear()
+        .domain([
+            d3.min(boxData, d => d.min),
+            d3.max(boxData, d => d.max)
+        ])
+        .range([height - margin.bottom, margin.top]);
+
+    // Add boxes
+    const boxWidth = x.bandwidth();
+
+    boxData.forEach(d => {
+        // Box
+        svg.append("rect")
+            .attr("x", x(d.segment))
+            .attr("y", y(d.q3))
+            .attr("height", y(d.q1) - y(d.q3))
+            .attr("width", boxWidth)
+            .attr("class", "box");
+
+        // Median line
+        svg.append("line")
+            .attr("x1", x(d.segment))
+            .attr("x2", x(d.segment) + boxWidth)
+            .attr("y1", y(d.median))
+            .attr("y2", y(d.median))
+            .attr("class", "median");
+
+        // Whiskers
+        svg.append("line")
+            .attr("x1", x(d.segment) + boxWidth/2)
+            .attr("x2", x(d.segment) + boxWidth/2)
+            .attr("y1", y(d.min))
+            .attr("y2", y(d.q1))
+            .attr("class", "whisker");
+
+        svg.append("line")
+            .attr("x1", x(d.segment) + boxWidth/2)
+            .attr("x2", x(d.segment) + boxWidth/2)
+            .attr("y1", y(d.q3))
+            .attr("y2", y(d.max))
+            .attr("class", "whisker");
+    });
+
+    // Add axes
+    svg.append("g")
+        .attr("transform", `translate(0,${height - margin.bottom})`)
+        .call(d3.axisBottom(x));
+
+    svg.append("g")
+        .attr("transform", `translate(${margin.left},0)`)
+        .call(d3.axisLeft(y));
+
+    // Add title
+    svg.append("text")
+        .attr("x", width/2)
+        .attr("y", margin.top)
+        .attr("text-anchor", "middle")
+        .text("Profit Distribution by Segment");
+}
+
+
+// Initialize all visualizations
+
+// ... Add calls to other visualization functions
+
+</script>
+</body>
+</html>
