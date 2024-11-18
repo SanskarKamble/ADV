@@ -1,7 +1,0 @@
-google-generativeai
-pandas
-numpy
-seaborn
-streamlit
-matplotlib
-scikit-learn
