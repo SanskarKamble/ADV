@@ -55,7 +55,7 @@ def show_assistant_message(message):
             st.image(plot_buffer)
         
 
-genai.configure(api_key="AIzaSyDJvr5jvwg4ylUPU418eHU5Litv9RVAzeY")
+genai.configure(api_key="YOUR_API_KEY")
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 st.title("Chat with Your Dataset for Data Visualization")
